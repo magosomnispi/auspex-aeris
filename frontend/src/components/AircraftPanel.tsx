@@ -1,8 +1,15 @@
 import type { LiveAircraft } from '../types'
 import './AircraftPanel.css'
 
+const DETECTION_RADIUS_KM = 10
+
 interface AircraftPanelProps {
   aircraft: LiveAircraft[]
+}
+
+// Convert feet to meters
+function feetToMeters(feet: number): number {
+  return Math.round(feet * 0.3048)
 }
 
 export function AircraftPanel({ aircraft }: AircraftPanelProps) {
@@ -14,7 +21,7 @@ export function AircraftPanel({ aircraft }: AircraftPanelProps) {
           Live Aircraft
         </h2>
         <div className="aircraft-count">
-          {aircraft.filter(a => a.distance_km <= 10).length} in range
+          {aircraft.filter(a => a.distance_km <= DETECTION_RADIUS_KM).length} in range
         </div>
       </div>
 
@@ -28,50 +35,62 @@ export function AircraftPanel({ aircraft }: AircraftPanelProps) {
         ) : (
           aircraft
             .sort((a, b) => a.distance_km - b.distance_km)
-            .map(ac => (
-              <div
-                key={ac.hex}
-                className={`aircraft-card ${ac.distance_km <= 5 ? 'in-zone' : ''}`}
-              >
-                <div className="aircraft-header">
-                  <span className="aircraft-flight">{ac.flight || 'UNKNOWN'}</span>
-                  <span className={`distance-badge ${ac.distance_km <= 5 ? 'close' : ''}`}>
-                    {ac.distance_km.toFixed(1)} km
-                  </span>
-                </div>
-
-                <div className="aircraft-hex">{ac.hex}</div>
-
-                <div className="aircraft-data">
-                  <div className="data-row">
-                    <span className="data-label">Altitude</span>
-                    <span className="data-value">
-                      {ac.altitude ? `${ac.altitude.toLocaleString()} ft` : 'N/A'}
+            .map(ac => {
+              const altMeters = ac.altitude ? feetToMeters(ac.altitude) : null
+              const isInZone = ac.distance_km <= DETECTION_RADIUS_KM
+              
+              return (
+                <div
+                  key={ac.hex}
+                  className={`aircraft-card ${isInZone ? 'in-zone' : ''}`}
+                >
+                  <div className="aircraft-header">
+                    <span className="aircraft-flight">{ac.flight || 'UNKNOWN'}</span>
+                    <span className={`distance-badge ${isInZone ? 'close' : ''}`}>
+                      {ac.distance_km.toFixed(1)} km
                     </span>
                   </div>
-                  <div className="data-row">
-                    <span className="data-label">Speed</span>
-                    <span className="data-value">
-                      {ac.gs ? `${ac.gs.toFixed(0)} kt` : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="data-row">
-                    <span className="data-label">Track</span>
-                    <span className="data-value">
-                      {ac.track ? `${ac.track.toFixed(0)}°` : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="data-row">
-                    <span className="data-label">Last seen</span>
-                    <span className="data-value">{ac.seen_seconds.toFixed(0)}s</span>
-                  </div>
-                </div>
 
-                <div className="coordinates">
-                  {ac.lat.toFixed(4)}°N, {ac.lon.toFixed(4)}°E
+                  <div className="aircraft-hex">{ac.hex}</div>
+
+                  <div className="aircraft-data">
+                    <div className="data-row">
+                      <span className="data-label">Altitude</span>
+                      <span className="data-value">
+                        {ac.altitude ? (
+                          <>
+                            {ac.altitude.toLocaleString()} ft
+                            <span className="metric">
+                              ({altMeters?.toLocaleString()} m)
+                            </span>
+                          </>
+                        ) : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="data-row">
+                      <span className="data-label">Speed</span>
+                      <span className="data-value">
+                        {ac.gs ? `${ac.gs.toFixed(0)} kt` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="data-row">
+                      <span className="data-label">Track</span>
+                      <span className="data-value">
+                        {ac.track ? `${ac.track.toFixed(0)}°` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="data-row">
+                      <span className="data-label">Last seen</span>
+                      <span className="data-value">{ac.seen_seconds.toFixed(0)}s</span>
+                    </div>
+                  </div>
+
+                  <div className="coordinates">
+                    {ac.lat.toFixed(4)}°N, {ac.lon.toFixed(4)}°E
+                  </div>
                 </div>
-              </div>
-            ))
+              )
+            })
         )}
       </div>
     </aside>

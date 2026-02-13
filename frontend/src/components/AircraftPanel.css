@@ -144,6 +144,14 @@
 .data-value {
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
+  text-align: right;
+  max-width: 70%;
+}
+
+.data-value .metric {
+  color: var(--text-secondary);
+  font-size: 0.75em;
+  margin-left: 4px;
 }
 
 .coordinates {

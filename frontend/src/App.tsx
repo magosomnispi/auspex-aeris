@@ -91,7 +91,7 @@ function App() {
             <div className="coordinates">
               {CENTER.lat.toFixed(6)}°N  {CENTER.lon.toFixed(6)}°E
             </div>
-            <div className="range-ring">5km Detection Radius</div>
+            <div className="range-ring">10km Detection Radius</div>
           </div>
         </div>
 

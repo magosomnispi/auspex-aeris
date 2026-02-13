@@ -80,7 +80,7 @@ export class DatabaseManager {
         const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
         // Find existing active encounter
         const existing = encounters.find(e => e.hex === aircraft.hex && e.is_active === 1);
-        if (distance <= 5.0) {
+        if (distance <= 10.0) {
             // Inside zone
             if (existing) {
                 // Update existing encounter

@@ -35,6 +35,8 @@ const MAP_STYLE = {
   ]
 }
 
+const DETECTION_RADIUS_KM = 10
+
 export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -50,7 +52,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
       container: mapContainer.current,
       style: MAP_STYLE as any,
       center: [center.lon, center.lat],
-      zoom: 11,
+      zoom: 10,
       pitch: 0,
       bearing: 0
     })
@@ -67,14 +69,14 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
       .setPopup(new maplibregl.Popup().setHTML('<b>AUSPEX ARRAY</b><br>Station Coordinates'))
       .addTo(map.current)
 
-    // Add 5km radius circle
+    // Add 10km radius circle
     map.current.on('load', () => {
       if (!map.current) return
 
-      // Add detection radius circle
+      // Add detection radius circle using proper geodesic circle
       map.current.addSource('detection-radius', {
         type: 'geojson',
-        data: createCircle(center.lon, center.lat, 5)
+        data: createGeodesicCircle(center.lon, center.lat, DETECTION_RADIUS_KM)
       })
 
       map.current.addLayer({
@@ -139,7 +141,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
     aircraft.forEach(ac => {
       if (!map.current) return
 
-      const isInZone = ac.distance_km <= 5
+      const isInZone = ac.distance_km <= DETECTION_RADIUS_KM
       const color = isInZone ? '#ff4444' : '#00d4ff'
       const el = document.createElement('div')
       el.className = 'aircraft-marker'
@@ -153,12 +155,17 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
         ${isInZone ? 'animation: pulse 1s ease-in-out infinite;' : ''}
       "></div>`
 
+      const altMeters = ac.altitude ? Math.round(ac.altitude * 0.3048) : null
+      const altDisplay = ac.altitude 
+        ? `${ac.altitude.toLocaleString()} ft (${altMeters?.toLocaleString()} m)` 
+        : 'N/A'
+
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([ac.lon, ac.lat])
         .setPopup(new maplibregl.Popup().setHTML(`
           <b>${ac.flight || 'UNKNOWN'}</b><br>
           Hex: ${ac.hex}<br>
-          Alt: ${ac.altitude ? ac.altitude + ' ft' : 'N/A'}<br>
+          Alt: ${altDisplay}<br>
           Speed: ${ac.gs ? ac.gs + ' kt' : 'N/A'}<br>
           Dist: ${ac.distance_km.toFixed(1)} km
         `))
@@ -191,18 +198,45 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
   return <div ref={mapContainer} className="map-view" />
 }
 
-// Create circle GeoJSON
-function createCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Feature {
-  const points = 64
+// Create proper geodesic circle GeoJSON
+// Uses destination calculation to maintain true circle shape
+function createGeodesicCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Feature {
+  const points = 128 // More points for smoother circle
   const coords: [number, number][] = []
   
+  // Earth's radius in km
+  const R = 6371
+  
+  // Convert center to radians
+  const latRad = lat * Math.PI / 180
+  const lonRad = lon * Math.PI / 180
+  
+  // Angular distance (radius in radians)
+  const angularDist = radiusKm / R
+  
   for (let i = 0; i < points; i++) {
-    const angle = (i / points) * 2 * Math.PI
-    const dx = radiusKm * Math.cos(angle) / 111.32
-    const dy = radiusKm * Math.sin(angle) / (111.32 * Math.cos(lat * Math.PI / 180))
-    coords.push([lon + dx, lat + dy])
+    const bearing = (i / points) * 2 * Math.PI
+    
+    // Calculate destination point using spherical trigonometry
+    const destLat = Math.asin(
+      Math.sin(latRad) * Math.cos(angularDist) +
+      Math.cos(latRad) * Math.sin(angularDist) * Math.cos(bearing)
+    )
+    
+    const destLon = lonRad + Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDist) * Math.cos(latRad),
+      Math.cos(angularDist) - Math.sin(latRad) * Math.sin(destLat)
+    )
+    
+    // Convert back to degrees
+    coords.push([
+      destLon * 180 / Math.PI,
+      destLat * 180 / Math.PI
+    ])
   }
-  coords.push(coords[0]) // Close ring
+  
+  // Close the ring
+  coords.push(coords[0])
   
   return {
     type: 'Feature',
@@ -210,6 +244,8 @@ function createCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Featu
       type: 'Polygon',
       coordinates: [coords]
     },
-    properties: {}
+    properties: {
+      radius_km: radiusKm
+    }
   }
 }
