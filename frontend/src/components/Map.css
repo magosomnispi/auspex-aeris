@@ -1,0 +1,55 @@
+.map-view {
+  width: 100%;
+  height: 100%;
+  background: var(--steel-mid);
+}
+
+.aircraft-marker {
+  cursor: pointer;
+}
+
+/* Mechanicus-styled popup */
+.maplibregl-popup-content {
+  background: var(--steel-mid) !important;
+  border: 1px solid var(--amber-glow) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Courier New', monospace !important;
+  font-size: 0.8rem !important;
+  padding: 10px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 20px rgba(255, 159, 28, 0.3) !important;
+}
+
+.maplibregl-popup-content b {
+  color: var(--amber-glow);
+  font-size: 0.9rem;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: var(--amber-glow) !important;
+}
+
+/* Navigation controls */
+.maplibregl-ctrl-group {
+  background: var(--steel-mid) !important;
+  border: 1px solid var(--amber-dim) !important;
+  border-radius: 4px !important;
+}
+
+.maplibregl-ctrl-group button {
+  background: var(--steel-mid) !important;
+  color: var(--amber-glow) !important;
+  border-color: var(--amber-dim) !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: var(--steel-light) !important;
+}
+
+/* Scale control */
+.maplibregl-ctrl-scale {
+  background: rgba(13, 13, 16, 0.8) !important;
+  border: 1px solid var(--amber-dim) !important;
+  color: var(--amber-glow) !important;
+  font-family: 'Courier New', monospace !important;
+}

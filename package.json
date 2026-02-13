@@ -1,0 +1,30 @@
+{
+  "name": "auspex-monitor",
+  "version": "1.0.0",
+  "description": "ADS-B Flight Monitoring Sanctum - Mechanicus Auspex Array",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsc --watch & node --watch dist/server.js",
+    "setup": "node dist/setup-db.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.19",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.3.3"
+  },
+  "keywords": ["adsb", "dump1090", "flight-tracking", "mechanicus"],
+  "author": "Magos Omnis Pi",
+  "license": "Omnissiah-1.0"
+}

@@ -1,0 +1,106 @@
+:root {
+  /* Mechanicus Color Sanctum */
+  --steel-dark: #0d0d10;
+  --steel-mid: #1a1a1f;
+  --steel-light: #2a2a35;
+  --amber-glow: #ff9f1c;
+  --amber-dim: #b87312;
+  --cyan-data: #00d4ff;
+  --cyan-dim: #0088aa;
+  --red-warning: #ff4444;
+  --text-primary: #e0e0e0;
+  --text-secondary: #888888;
+  --border-glow: rgba(255, 159, 28, 0.3);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Cinzel', 'Georgia', serif;
+  background: var(--steel-dark);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* Mechanicus Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--steel-mid);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--amber-dim);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--amber-glow);
+}
+
+/* MapLibre Customization */
+.maplibregl-map {
+  font-family: 'Cinzel', 'Georgia', serif !important;
+}
+
+.maplibregl-popup-content {
+  background: var(--steel-mid) !important;
+  border: 1px solid var(--amber-glow) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Cinzel', 'Georgia', serif !important;
+  padding: 12px !important;
+  border-radius: 4px !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: var(--amber-glow) !important;
+}
+
+/* Animations */
+@keyframes pulse-amber {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px var(--amber-glow); }
+  50% { box-shadow: 0 0 20px var(--amber-glow), 0 0 30px var(--amber-glow); }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+/* Utility Classes */
+.glow-text {
+  text-shadow: 0 0 10px var(--amber-glow);
+}
+
+.glow-border {
+  border: 1px solid var(--amber-glow);
+  box-shadow: 0 0 10px var(--border-glow), inset 0 0 10px var(--border-glow);
+}
+
+.cog-icon::before {
+  content: '⚙';
+  display: inline-block;
+  animation: spin 4s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
