@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
+import circle from '@turf/circle'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { LiveAircraft } from '../types'
 import './Map.css'
@@ -70,14 +71,21 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
       .setPopup(new maplibregl.Popup().setHTML('<b>AUSPEX ARRAY</b><br>Station Coordinates'))
       .addTo(map.current)
 
-    // Add 10km radius circle
+    // Add 10km radius circle using Turf.js
     map.current.on('load', () => {
       if (!map.current) return
+
+      // Create circle using Turf.js - creates proper geodesic circle
+      const centerPoint = [center.lon, center.lat] as [number, number]
+      const circleGeojson = circle(centerPoint, DETECTION_RADIUS_KM, {
+        steps: 128,
+        units: 'kilometers'
+      })
 
       // Add detection radius circle
       map.current.addSource('detection-radius', {
         type: 'geojson',
-        data: createMercatorCircle(center.lon, center.lat, DETECTION_RADIUS_KM)
+        data: circleGeojson
       })
 
       map.current.addLayer({
@@ -199,49 +207,4 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
   }, [selectedEncounter, apiBase, authHeader])
 
   return <div ref={mapContainer} className="map-view" />
-}
-
-// Create circle in Web Mercator projection
-// This ensures the circle renders as a true circle on the map
-function createMercatorCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Feature {
-  const points = 128
-  const coords: [number, number][] = []
-  
-  // Earth's circumference at equator in meters
-  const EARTH_CIRCUMFERENCE = 40075016.686
-  
-  // Convert center to Web Mercator meters
-  const centerX = (lon / 360) * EARTH_CIRCUMFERENCE
-  const centerY = (Math.log(Math.tan((lat + 90) * Math.PI / 360)) / Math.PI) * (EARTH_CIRCUMFERENCE / 2)
-  
-  // Radius in meters
-  const radiusM = radiusKm * 1000
-  
-  for (let i = 0; i < points; i++) {
-    const angle = (i / points) * 2 * Math.PI
-    
-    // Circle in projected coordinates
-    const x = centerX + radiusM * Math.cos(angle)
-    const y = centerY + radiusM * Math.sin(angle)
-    
-    // Convert back to lat/lon
-    const destLon = (x / EARTH_CIRCUMFERENCE) * 360
-    const destLat = (360 / Math.PI) * Math.atan(Math.exp((y / (EARTH_CIRCUMFERENCE / 2)) * Math.PI)) - 90
-    
-    coords.push([destLon, destLat])
-  }
-  
-  // Close the ring
-  coords.push(coords[0])
-  
-  return {
-    type: 'Feature',
-    geometry: {
-      type: 'Polygon',
-      coordinates: [coords]
-    },
-    properties: {
-      radius_km: radiusKm
-    }
-  }
 }
