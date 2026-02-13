@@ -76,7 +76,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
       // Add detection radius circle using proper geodesic circle
       map.current.addSource('detection-radius', {
         type: 'geojson',
-        data: createGeodesicCircle(center.lon, center.lat, DETECTION_RADIUS_KM)
+        data: createMercatorCircle(center.lon, center.lat, DETECTION_RADIUS_KM)
       })
 
       map.current.addLayer({
@@ -198,41 +198,35 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
   return <div ref={mapContainer} className="map-view" />
 }
 
-// Create proper geodesic circle GeoJSON
-// Uses destination calculation to maintain true circle shape
-function createGeodesicCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Feature {
-  const points = 128 // More points for smoother circle
+// Create circle that renders correctly in Web Mercator projection
+// Web Mercator stretches east-west at high latitudes, so we create the circle
+// in projected meter coordinates to ensure it appears as a true circle
+function createMercatorCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Feature {
+  const points = 128
   const coords: [number, number][] = []
   
-  // Earth's radius in km
-  const R = 6371
+  // Earth's circumference at equator in meters
+  const EARTH_CIRCUMFERENCE = 40075016.686
   
-  // Convert center to radians
-  const latRad = lat * Math.PI / 180
-  const lonRad = lon * Math.PI / 180
+  // Convert center to Web Mercator meters
+  const centerX = (lon / 360) * EARTH_CIRCUMFERENCE
+  const centerY = (Math.log(Math.tan((lat + 90) * Math.PI / 360)) / Math.PI) * (EARTH_CIRCUMFERENCE / 2)
   
-  // Angular distance (radius in radians)
-  const angularDist = radiusKm / R
+  // Radius in meters
+  const radiusM = radiusKm * 1000
   
   for (let i = 0; i < points; i++) {
-    const bearing = (i / points) * 2 * Math.PI
+    const angle = (i / points) * 2 * Math.PI
     
-    // Calculate destination point using spherical trigonometry
-    const destLat = Math.asin(
-      Math.sin(latRad) * Math.cos(angularDist) +
-      Math.cos(latRad) * Math.sin(angularDist) * Math.cos(bearing)
-    )
+    // Circle in projected coordinates
+    const x = centerX + radiusM * Math.cos(angle)
+    const y = centerY + radiusM * Math.sin(angle)
     
-    const destLon = lonRad + Math.atan2(
-      Math.sin(bearing) * Math.sin(angularDist) * Math.cos(latRad),
-      Math.cos(angularDist) - Math.sin(latRad) * Math.sin(destLat)
-    )
+    // Convert back to lat/lon
+    const destLon = (x / EARTH_CIRCUMFERENCE) * 360
+    const destLat = (360 / Math.PI) * Math.atan(Math.exp((y / (EARTH_CIRCUMFERENCE / 2)) * Math.PI)) - 90
     
-    // Convert back to degrees
-    coords.push([
-      destLon * 180 / Math.PI,
-      destLat * 180 / Math.PI
-    ])
+    coords.push([destLon, destLat])
   }
   
   // Close the ring
