@@ -9,6 +9,7 @@ interface MapProps {
   aircraft: LiveAircraft[]
   selectedEncounter: number | null
   apiBase: string
+  authHeader: string
 }
 
 // Dark steel Mechanicus style
@@ -37,7 +38,7 @@ const MAP_STYLE = {
 
 const DETECTION_RADIUS_KM = 10
 
-export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) {
+export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const aircraftMarkers = useRef<maplibregl.Marker[]>([])
@@ -73,7 +74,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
     map.current.on('load', () => {
       if (!map.current) return
 
-      // Add detection radius circle using proper geodesic circle
+      // Add detection radius circle
       map.current.addSource('detection-radius', {
         type: 'geojson',
         data: createMercatorCircle(center.lon, center.lat, DETECTION_RADIUS_KM)
@@ -182,7 +183,9 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
       return
     }
 
-    fetch(`${apiBase}/api/encounters/${selectedEncounter}/geojson`)
+    fetch(`${apiBase}/api/encounters/${selectedEncounter}/geojson`, {
+      headers: { 'Authorization': authHeader }
+    })
       .then(res => res.json())
       .then(data => {
         if (data.ok && data.features?.length > 0) {
@@ -193,14 +196,13 @@ export function Map({ center, aircraft, selectedEncounter, apiBase }: MapProps) 
         }
       })
       .catch(err => console.error('Failed to load encounter track:', err))
-  }, [selectedEncounter, apiBase])
+  }, [selectedEncounter, apiBase, authHeader])
 
   return <div ref={mapContainer} className="map-view" />
 }
 
-// Create circle that renders correctly in Web Mercator projection
-// Web Mercator stretches east-west at high latitudes, so we create the circle
-// in projected meter coordinates to ensure it appears as a true circle
+// Create circle in Web Mercator projection
+// This ensures the circle renders as a true circle on the map
 function createMercatorCircle(lon: number, lat: number, radiusKm: number): GeoJSON.Feature {
   const points = 128
   const coords: [number, number][] = []

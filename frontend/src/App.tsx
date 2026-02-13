@@ -7,7 +7,12 @@ import { StatusBar } from './components/StatusBar'
 import type { LiveAircraft, EncounterSummary, SystemStatus } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://192.168.68.114:3005'
+const AUTH_USER = import.meta.env.VITE_AUTH_USER || 'inquisitor'
+const AUTH_PASS = import.meta.env.VITE_AUTH_PASS || 'Blackarmy1'
 const CENTER = { lat: 59.257888, lon: 18.198243 }
+
+// Create auth header
+const authHeader = 'Basic ' + btoa(`${AUTH_USER}:${AUTH_PASS}`)
 
 function App() {
   const [aircraft, setAircraft] = useState<LiveAircraft[]>([])
@@ -22,22 +27,30 @@ function App() {
 
   const fetchData = useCallback(async () => {
     try {
+      const headers = { 
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      }
+
       // Fetch live aircraft
-      const liveRes = await fetch(`${API_BASE}/api/live`)
+      const liveRes = await fetch(`${API_BASE}/api/live`, { headers })
       if (liveRes.ok) {
         const liveData = await liveRes.json()
         setAircraft(liveData.aircraft || [])
+      } else if (liveRes.status === 401) {
+        setError('Authentication failed - check credentials')
+        return
       }
 
       // Fetch encounters
-      const encRes = await fetch(`${API_BASE}/api/encounters?limit=50`)
+      const encRes = await fetch(`${API_BASE}/api/encounters?limit=50`, { headers })
       if (encRes.ok) {
         const encData = await encRes.json()
         setEncounters(encData.encounters || [])
       }
 
       // Fetch status
-      const statusRes = await fetch(`${API_BASE}/health`)
+      const statusRes = await fetch(`${API_BASE}/health`, { headers })
       if (statusRes.ok) {
         const statusData = await statusRes.json()
         setStatus(statusData)
@@ -92,6 +105,7 @@ function App() {
             aircraft={aircraft}
             selectedEncounter={selectedEncounter}
             apiBase={API_BASE}
+            authHeader={authHeader}
           />
           <div className="map-overlay">
             <div className="coordinates">

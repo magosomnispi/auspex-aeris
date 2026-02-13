@@ -1,11 +1,17 @@
 import express from 'express';
 import cors from 'cors';
+import basicAuth from 'express-basic-auth';
 import { DatabaseManager, initSchema } from './database.js';
 import { Poller } from './poller.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+
+// Authentication configuration
+const AUTH_USER = process.env.AUTH_USER || 'inquisitor';
+const AUTH_PASS = process.env.AUTH_PASS || 'Blackarmy1';
+const AUTH_ENABLED = process.env.AUTH_ENABLED !== 'false';
 
 // Initialize database
 initSchema();
@@ -15,8 +21,21 @@ const db = new DatabaseManager();
 const poller = new Poller(db);
 
 // Middleware
-app.use(cors({ origin: CORS_ORIGIN }));
+app.use(cors({ 
+  origin: CORS_ORIGIN,
+  credentials: true 
+}));
 app.use(express.json());
+
+// Basic Authentication middleware
+if (AUTH_ENABLED) {
+  app.use(basicAuth({
+    users: { [AUTH_USER]: AUTH_PASS },
+    challenge: true,
+    realm: 'AUSPEX AERIS SANCTUM'
+  }));
+  console.log(`[AUTH] Basic authentication enabled for user: ${AUTH_USER}`);
+}
 
 // Request logging
 app.use((req, res, next) => {
@@ -24,7 +43,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
+// Health check (public)
 app.get('/health', (req, res) => {
   const status = poller.getStatus();
   res.json({
@@ -179,6 +198,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('═══════════════════════════════════════════');
   console.log(`[SERVER] Running on http://0.0.0.0:${PORT}`);
   console.log(`[CORS] Origin: ${CORS_ORIGIN}`);
+  console.log(`[AUTH] ${AUTH_ENABLED ? 'Enabled' : 'Disabled'}`);
+  if (AUTH_ENABLED) {
+    console.log(`[AUTH] Username: ${AUTH_USER}`);
+  }
   console.log(`[DATABASE] Path: ${process.env.DB_PATH || '/var/lib/auspex-monitor/flights.db'}`);
   
   // Start polling
