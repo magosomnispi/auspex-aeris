@@ -5,6 +5,8 @@ const DETECTION_RADIUS_KM = 10
 
 interface AircraftPanelProps {
   aircraft: LiveAircraft[]
+  isCollapsed: boolean
+  onToggle: () => void
 }
 
 // Convert feet to meters
@@ -12,7 +14,17 @@ function feetToMeters(feet: number): number {
   return Math.round(feet * 0.3048)
 }
 
-export function AircraftPanel({ aircraft }: AircraftPanelProps) {
+export function AircraftPanel({ aircraft, isCollapsed, onToggle }: AircraftPanelProps) {
+  if (isCollapsed) {
+    const inRange = aircraft.filter(a => a.distance_km <= DETECTION_RADIUS_KM).length
+    return (
+      <button className="panel-toggle right" onClick={onToggle} title="Show Aircraft">
+        <span>📡</span>
+        <span className="toggle-count">{inRange}</span>
+      </button>
+    )
+  }
+
   return (
     <aside className="aircraft-panel">
       <div className="panel-header">
@@ -20,6 +32,7 @@ export function AircraftPanel({ aircraft }: AircraftPanelProps) {
           <span className="panel-icon">📡</span>
           Live Aircraft
         </h2>
+        <button className="collapse-btn" onClick={onToggle} title="Hide Panel">→</button>
         <div className="aircraft-count">
           {aircraft.filter(a => a.distance_km <= DETECTION_RADIUS_KM).length} in range
         </div>

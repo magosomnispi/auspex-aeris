@@ -8,12 +8,13 @@
 }
 
 .aircraft-panel .panel-header {
-  padding: 15px;
+  padding: 15px 45px 15px 15px;
   background: rgba(0, 212, 255, 0.1);
   border-bottom: 1px solid var(--cyan-dim);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
 }
 
 .aircraft-panel .panel-header h2 {

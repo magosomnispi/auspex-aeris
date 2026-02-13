@@ -15,6 +15,10 @@ function App() {
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [selectedEncounter, setSelectedEncounter] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  
+  // Mobile panel collapse state
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -77,6 +81,8 @@ function App() {
           encounters={encounters}
           selectedId={selectedEncounter}
           onSelect={setSelectedEncounter}
+          isCollapsed={leftPanelCollapsed}
+          onToggle={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
         />
 
         {/* Center - Map */}
@@ -96,7 +102,11 @@ function App() {
         </div>
 
         {/* Right Panel - Live Aircraft */}
-        <AircraftPanel aircraft={aircraft} />
+        <AircraftPanel 
+          aircraft={aircraft}
+          isCollapsed={rightPanelCollapsed}
+          onToggle={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+        />
       </main>
 
       {/* Footer */}

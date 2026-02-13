@@ -8,12 +8,13 @@
 }
 
 .panel-header {
-  padding: 15px;
+  padding: 15px 45px 15px 15px;
   background: rgba(255, 159, 28, 0.1);
   border-bottom: 1px solid var(--amber-dim);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
 }
 
 .panel-header h2 {
@@ -176,6 +177,12 @@
 
 .encounter-altitude span {
   color: var(--cyan-data);
+}
+
+.encounter-altitude .metric {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  margin-left: 4px;
 }
 
 .encounter-points {
