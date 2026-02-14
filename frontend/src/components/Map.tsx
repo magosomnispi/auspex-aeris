@@ -59,7 +59,7 @@ function createAircraftIcon(track: number, color: string, isInZone: boolean): st
 export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
-  const aircraftMarkers = useRef<Map<string, maplibregl.Marker>>(new Map())
+  const aircraftMarkers = useRef<globalThis.Map<string, maplibregl.Marker>>(new globalThis.Map())
   const activePopupAircraft = useRef<string | null>(null)
   const encounterLine = useRef<maplibregl.GeoJSONSource | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -220,7 +220,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         
         // Update the marker element with new icon
         const el = existingMarker.getElement()
-        el.innerHTML = createAircraftIcon(ac.track, color, isInZone)
+        el.innerHTML = createAircraftIcon(ac.track ?? 0, color, isInZone)
         
         // Update popup content
         const popup = existingMarker.getPopup()
@@ -237,7 +237,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         const el = document.createElement('div')
         el.className = 'aircraft-marker'
         el.style.cursor = 'pointer'
-        el.innerHTML = createAircraftIcon(ac.track, color, isInZone)
+        el.innerHTML = createAircraftIcon(ac.track ?? 0, color, isInZone)
 
         const popup = new maplibregl.Popup({ 
           closeButton: false,
