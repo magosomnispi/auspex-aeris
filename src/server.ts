@@ -161,6 +161,46 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
+// Distance record - farthest tracked aircraft
+app.get('/api/record', (req, res) => {
+  try {
+    const record = db.getDistanceRecord();
+    if (!record) {
+      return res.status(404).json({ 
+        ok: false, 
+        error: 'No record yet - awaiting first contact',
+        message: 'Record will be set when an aircraft is tracked'
+      });
+    }
+    
+    res.json({
+      ok: true,
+      record: {
+        hex: record.hex,
+        flight: record.flight,
+        distance_km: record.distance_km,
+        lat: record.lat,
+        lon: record.lon,
+        altitude: record.altitude,
+        timestamp: record.timestamp,
+        gs: record.gs,
+        track: record.track,
+        formatted: {
+          distance: `${record.distance_km.toFixed(2)} km`,
+          position: `${record.lat.toFixed(6)}°N, ${record.lon.toFixed(6)}°E`,
+          time: new Date(record.timestamp * 1000).toISOString()
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[API] Error fetching record:', error);
+    res.status(503).json({
+      ok: false,
+      error: 'Database error'
+    });
+  }
+});
+
 // Session tracks (ephemeral, not persisted)
 app.get('/api/session-tracks', (req, res) => {
   try {
@@ -252,6 +292,7 @@ app.get('/', (req, res) => {
       '/api/session-tracks',
       '/api/session-tracks/:hex',
       '/api/session-tracks/:hex/geojson',
+      '/api/record',
       '/api/stats'
     ],
     center: { lat: 59.257888, lon: 18.198243 }

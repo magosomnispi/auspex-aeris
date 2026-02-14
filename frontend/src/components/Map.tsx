@@ -118,6 +118,51 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
       .setPopup(new maplibregl.Popup().setHTML('<b>AUSPEX ARRAY</b><br>Station Coordinates'))
       .addTo(map.current)
 
+    // Load and display distance record marker
+    fetch(`${apiBase}/api/record`, { headers: { 'Authorization': authHeader } })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.record && map.current) {
+          const record = data.record
+          const el = document.createElement('div')
+          el.className = 'record-marker'
+          el.innerHTML = `
+            <svg width="32" height="32" viewBox="0 0 32 32" style="filter: drop-shadow(0 0 8px #ffd700);">
+              <circle cx="16" cy="16" r="14" fill="#ffd700" stroke="#ff9f1c" stroke-width="2"/>
+              <text x="16" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#000">R</text>
+            </svg>
+          `
+          
+          new maplibregl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([record.lon, record.lat])
+            .setPopup(new maplibregl.Popup({ offset: 15 }).setHTML(`
+              <div style="font-family: 'Cascadia Code', monospace; padding: 10px; max-width: 280px; background: #1a1a1f; border: 2px solid #ffd700; border-radius: 4px;">
+                <div style="font-weight: bold; color: #ffd700; font-size: 14px; margin-bottom: 6px; text-align: center;">
+                  🏆 DISTANCE RECORD HOLDER
+                </div>
+                <div style="color: #fff; font-size: 16px; margin-bottom: 4px; text-align: center;">
+                  ${record.flight || record.hex}
+                </div>
+                <div style="color: #ff9f1c; font-size: 20px; font-weight: bold; text-align: center; margin: 8px 0;">
+                  ${record.distance_km.toFixed(2)} km
+                </div>
+                <div style="border-top: 1px solid #444; padding-top: 8px; margin-top: 8px; font-size: 11px; color: #888;">
+                  <div>Altitude: ${record.altitude ? record.altitude.toLocaleString() + ' ft' : 'N/A'}</div>
+                  <div>Speed: ${record.gs ? record.gs + ' kt' : 'N/A'}</div>
+                  <div>Heading: ${record.track ? Math.round(record.track) + '°' : 'N/A'}</div>
+                  <div style="margin-top: 6px; color: #666;">
+                    Recorded: ${new Date(record.timestamp * 1000).toLocaleString('sv-SE')}
+                  </div>
+                </div>
+              </div>
+            `))
+            .addTo(map.current)
+          
+          console.log(`[MAP] Record marker added: ${record.flight || record.hex} at ${record.distance_km.toFixed(2)}km`)
+        }
+      })
+      .catch(err => console.log('[MAP] No record yet or error loading:', err))
+
     // Add 10km radius circle using Turf.js
     map.current.on('load', () => {
       if (!map.current) return

@@ -22,6 +22,28 @@
   filter: drop-shadow(0 0 8px currentColor) !important;
 }
 
+/* Record marker */
+.record-marker {
+  cursor: pointer;
+  animation: record-pulse 2s ease-in-out infinite;
+}
+
+@keyframes record-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 8px #ffd700);
+  }
+  50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 16px #ffd700);
+  }
+}
+
+.record-marker:hover {
+  animation: none;
+  transform: scale(1.3);
+}
+
 /* Pulse animation for in-zone aircraft */
 @keyframes pulse-ring {
   0% {

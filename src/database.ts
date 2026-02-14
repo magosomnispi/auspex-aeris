@@ -5,6 +5,7 @@ import { dirname, join } from 'path';
 const DATA_DIR = process.env.DATA_DIR || '/var/lib/auspex-monitor';
 const ENCOUNTERS_FILE = join(DATA_DIR, 'encounters.json');
 const TRACKPOINTS_FILE = join(DATA_DIR, 'trackpoints.json');
+const RECORD_FILE = join(DATA_DIR, 'record.json');
 
 // Ensure directory exists
 try {
@@ -24,6 +25,49 @@ const sessionTracks = new Map<string, SessionTrack>();
 const MAX_SESSION_POINTS = 500; // Max points per aircraft in session
 const MAX_SESSION_AGE = 3600; // Remove aircraft not seen for 1 hour
 
+// Farthest tracked aircraft record
+interface DistanceRecord {
+  hex: string;
+  flight: string | null;
+  distance_km: number;
+  lat: number;
+  lon: number;
+  altitude: number | null;
+  timestamp: number;
+  gs: number | null;
+  track: number | null;
+}
+
+let farthestRecord: DistanceRecord | null = null;
+
+// Load record from disk
+function loadRecord(): void {
+  try {
+    if (existsSync(RECORD_FILE)) {
+      const data = JSON.parse(readFileSync(RECORD_FILE, 'utf8'));
+      farthestRecord = data.record || null;
+      if (farthestRecord) {
+        console.log(`[RECORD] Loaded: ${farthestRecord.flight || farthestRecord.hex} at ${farthestRecord.distance_km.toFixed(2)}km`);
+      }
+    }
+  } catch (e) {
+    console.log('[RECORD] No existing record found');
+    farthestRecord = null;
+  }
+}
+
+// Save record to disk
+function saveRecord(): void {
+  try {
+    writeFileSync(RECORD_FILE, JSON.stringify({
+      record: farthestRecord,
+      savedAt: Date.now()
+    }, null, 2));
+  } catch (e) {
+    console.error('[RECORD] Error saving record:', e);
+  }
+}
+
 // Load from disk if exists
 function loadData(): void {
   try {
@@ -37,6 +81,7 @@ function loadData(): void {
       trackpoints = data.trackpoints || [];
       nextTrackpointId = data.nextId || 1;
     }
+    loadRecord();
     console.log(`[DATABASE] Loaded ${encounters.length} encounters, ${trackpoints.length} trackpoints`);
   } catch (e) {
     console.log('[DATABASE] Starting with fresh data');
@@ -106,7 +151,7 @@ const CENTER_LON = 18.198243;
 export class DatabaseManager {
   // Track all aircraft in session (ephemeral)
   trackAircraft(aircraft: { hex: string; flight?: string; lat?: number; lon?: number; 
-                            altitude?: number; alt_baro?: number; gs?: number; track?: number }): void {
+                            altitude?: number; alt_baro?: number; gs?: number; track?: number }, distance_km: number): void {
     if (!aircraft.lat || !aircraft.lon) return;
     
     const now = Date.now() / 1000;
@@ -144,6 +189,36 @@ export class DatabaseManager {
         track.points.shift();
       }
     }
+    
+    // Check for new distance record
+    this.checkDistanceRecord(aircraft, distance_km);
+  }
+  
+  // Check and update distance record
+  private checkDistanceRecord(aircraft: { hex: string; flight?: string; lat?: number; lon?: number; 
+                                          altitude?: number; alt_baro?: number; gs?: number; track?: number }, 
+                              distance_km: number): void {
+    if (!farthestRecord || distance_km > farthestRecord.distance_km) {
+      const previousRecord = farthestRecord?.distance_km.toFixed(2) || 'none';
+      farthestRecord = {
+        hex: aircraft.hex,
+        flight: aircraft.flight?.trim() || null,
+        distance_km: distance_km,
+        lat: aircraft.lat!,
+        lon: aircraft.lon!,
+        altitude: aircraft.altitude ?? aircraft.alt_baro ?? null,
+        timestamp: Date.now() / 1000,
+        gs: aircraft.gs ?? null,
+        track: aircraft.track ?? null
+      };
+      saveRecord();
+      console.log(`[RECORD] New farthest aircraft! ${farthestRecord.flight || farthestRecord.hex} at ${distance_km.toFixed(2)}km (previous: ${previousRecord})`);
+    }
+  }
+  
+  // Get the current distance record
+  getDistanceRecord(): DistanceRecord | null {
+    return farthestRecord;
   }
   
   // Get session track for an aircraft
@@ -165,8 +240,8 @@ export class DatabaseManager {
     const now = Date.now() / 1000;
     const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
     
-    // Track all aircraft in session
-    this.trackAircraft(aircraft);
+    // Track all aircraft in session (pass distance for record checking)
+    this.trackAircraft(aircraft, distance);
     
     // Find existing active encounter
     const existing = encounters.find(e => e.hex === aircraft.hex && e.is_active === 1);
@@ -359,7 +434,7 @@ export class DatabaseManager {
 
   // Get stats
   getStats(): { total_encounters: number; active_encounters: number; total_trackpoints: number;
-                today_encounters: number; session_aircraft: number } {
+                today_encounters: number; session_aircraft: number; distance_record: DistanceRecord | null } {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayTs = today.getTime() / 1000;
@@ -369,7 +444,8 @@ export class DatabaseManager {
       active_encounters: encounters.filter(e => e.is_active === 1).length,
       total_trackpoints: trackpoints.length,
       today_encounters: encounters.filter(e => e.start_ts >= todayTs).length,
-      session_aircraft: sessionTracks.size
+      session_aircraft: sessionTracks.size,
+      distance_record: farthestRecord
     };
   }
   

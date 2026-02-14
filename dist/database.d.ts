@@ -1,4 +1,15 @@
 import { Encounter, Trackpoint, EncounterSummary, SessionTrack } from './types.js';
+interface DistanceRecord {
+    hex: string;
+    flight: string | null;
+    distance_km: number;
+    lat: number;
+    lon: number;
+    altitude: number | null;
+    timestamp: number;
+    gs: number | null;
+    track: number | null;
+}
 export declare function initSchema(): void;
 export declare class DatabaseManager {
     trackAircraft(aircraft: {
@@ -10,7 +21,9 @@ export declare class DatabaseManager {
         alt_baro?: number;
         gs?: number;
         track?: number;
-    }): void;
+    }, distance_km: number): void;
+    private checkDistanceRecord;
+    getDistanceRecord(): DistanceRecord | null;
     getSessionTrack(hex: string): SessionTrack | null;
     getAllSessionTracks(): SessionTrack[];
     processAircraft(aircraft: {
@@ -49,7 +62,9 @@ export declare class DatabaseManager {
         total_trackpoints: number;
         today_encounters: number;
         session_aircraft: number;
+        distance_record: DistanceRecord | null;
     };
     save(): void;
 }
+export {};
 //# sourceMappingURL=database.d.ts.map

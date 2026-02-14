@@ -3,6 +3,7 @@ import { join } from 'path';
 const DATA_DIR = process.env.DATA_DIR || '/var/lib/auspex-monitor';
 const ENCOUNTERS_FILE = join(DATA_DIR, 'encounters.json');
 const TRACKPOINTS_FILE = join(DATA_DIR, 'trackpoints.json');
+const RECORD_FILE = join(DATA_DIR, 'record.json');
 // Ensure directory exists
 try {
     mkdirSync(DATA_DIR, { recursive: true });
@@ -19,6 +20,35 @@ let nextTrackpointId = 1;
 const sessionTracks = new Map();
 const MAX_SESSION_POINTS = 500; // Max points per aircraft in session
 const MAX_SESSION_AGE = 3600; // Remove aircraft not seen for 1 hour
+let farthestRecord = null;
+// Load record from disk
+function loadRecord() {
+    try {
+        if (existsSync(RECORD_FILE)) {
+            const data = JSON.parse(readFileSync(RECORD_FILE, 'utf8'));
+            farthestRecord = data.record || null;
+            if (farthestRecord) {
+                console.log(`[RECORD] Loaded: ${farthestRecord.flight || farthestRecord.hex} at ${farthestRecord.distance_km.toFixed(2)}km`);
+            }
+        }
+    }
+    catch (e) {
+        console.log('[RECORD] No existing record found');
+        farthestRecord = null;
+    }
+}
+// Save record to disk
+function saveRecord() {
+    try {
+        writeFileSync(RECORD_FILE, JSON.stringify({
+            record: farthestRecord,
+            savedAt: Date.now()
+        }, null, 2));
+    }
+    catch (e) {
+        console.error('[RECORD] Error saving record:', e);
+    }
+}
 // Load from disk if exists
 function loadData() {
     try {
@@ -32,6 +62,7 @@ function loadData() {
             trackpoints = data.trackpoints || [];
             nextTrackpointId = data.nextId || 1;
         }
+        loadRecord();
         console.log(`[DATABASE] Loaded ${encounters.length} encounters, ${trackpoints.length} trackpoints`);
     }
     catch (e) {
@@ -92,7 +123,7 @@ const CENTER_LAT = 59.257888;
 const CENTER_LON = 18.198243;
 export class DatabaseManager {
     // Track all aircraft in session (ephemeral)
-    trackAircraft(aircraft) {
+    trackAircraft(aircraft, distance_km) {
         if (!aircraft.lat || !aircraft.lon)
             return;
         const now = Date.now() / 1000;
@@ -126,6 +157,31 @@ export class DatabaseManager {
                 track.points.shift();
             }
         }
+        // Check for new distance record
+        this.checkDistanceRecord(aircraft, distance_km);
+    }
+    // Check and update distance record
+    checkDistanceRecord(aircraft, distance_km) {
+        if (!farthestRecord || distance_km > farthestRecord.distance_km) {
+            const previousRecord = farthestRecord?.distance_km.toFixed(2) || 'none';
+            farthestRecord = {
+                hex: aircraft.hex,
+                flight: aircraft.flight?.trim() || null,
+                distance_km: distance_km,
+                lat: aircraft.lat,
+                lon: aircraft.lon,
+                altitude: aircraft.altitude ?? aircraft.alt_baro ?? null,
+                timestamp: Date.now() / 1000,
+                gs: aircraft.gs ?? null,
+                track: aircraft.track ?? null
+            };
+            saveRecord();
+            console.log(`[RECORD] New farthest aircraft! ${farthestRecord.flight || farthestRecord.hex} at ${distance_km.toFixed(2)}km (previous: ${previousRecord})`);
+        }
+    }
+    // Get the current distance record
+    getDistanceRecord() {
+        return farthestRecord;
     }
     // Get session track for an aircraft
     getSessionTrack(hex) {
@@ -142,8 +198,8 @@ export class DatabaseManager {
         const distance = haversine(CENTER_LAT, CENTER_LON, aircraft.lat, aircraft.lon);
         const now = Date.now() / 1000;
         const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
-        // Track all aircraft in session
-        this.trackAircraft(aircraft);
+        // Track all aircraft in session (pass distance for record checking)
+        this.trackAircraft(aircraft, distance);
         // Find existing active encounter
         const existing = encounters.find(e => e.hex === aircraft.hex && e.is_active === 1);
         if (distance <= 10.0) {
@@ -323,7 +379,8 @@ export class DatabaseManager {
             active_encounters: encounters.filter(e => e.is_active === 1).length,
             total_trackpoints: trackpoints.length,
             today_encounters: encounters.filter(e => e.start_ts >= todayTs).length,
-            session_aircraft: sessionTracks.size
+            session_aircraft: sessionTracks.size,
+            distance_record: farthestRecord
         };
     }
     // Force save
