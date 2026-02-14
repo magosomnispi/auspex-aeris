@@ -13,6 +13,18 @@ interface MapProps {
   authHeader: string
 }
 
+interface DistanceRecord {
+  hex: string
+  flight: string | null
+  distance_km: number
+  lat: number
+  lon: number
+  altitude: number | null
+  timestamp: number
+  gs: number | null
+  track: number | null
+}
+
 // Dark steel Mechanicus style
 const MAP_STYLE = {
   version: 8,
@@ -56,15 +68,43 @@ function createAircraftIcon(track: number, color: string, isInZone: boolean): st
   `
 }
 
+// Create record marker element
+function createRecordMarkerElement(): HTMLDivElement {
+  const el = document.createElement('div')
+  el.className = 'record-marker'
+  el.innerHTML = `
+    <svg width="32" height="32" viewBox="0 0 32 32">
+      <circle cx="16" cy="16" r="14" fill="#ffd700" stroke="#ff9f1c" stroke-width="2"/>
+      <text x="16" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#000">R</text>
+    </svg>
+  `
+  return el
+}
+
 export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const aircraftMarkers = useRef<globalThis.Map<string, maplibregl.Marker>>(new globalThis.Map())
+  const recordMarker = useRef<maplibregl.Marker | null>(null)
   const activePopupAircraft = useRef<string | null>(null)
   const selectedTrackHex = useRef<string | null>(null)
   const encounterLine = useRef<maplibregl.GeoJSONSource | null>(null)
   const sessionTrackLine = useRef<maplibregl.GeoJSONSource | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [record, setRecord] = useState<DistanceRecord | null>(null)
+
+  // Fetch record data on mount
+  useEffect(() => {
+    fetch(`${apiBase}/api/record`, { headers: { 'Authorization': authHeader } })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.record) {
+          setRecord(data.record)
+          console.log(`[MAP] Record loaded: ${data.record.flight || data.record.hex} at ${data.record.distance_km.toFixed(2)}km`)
+        }
+      })
+      .catch(err => console.log('[MAP] No record yet:', err))
+  }, [apiBase, authHeader])
 
   // Fetch and display session track for an aircraft
   const loadSessionTrack = useCallback((hex: string) => {
@@ -197,56 +237,6 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
       encounterLine.current = map.current.getSource('encounter-track') as maplibregl.GeoJSONSource
       sessionTrackLine.current = map.current.getSource('session-track') as maplibregl.GeoJSONSource
       setIsLoaded(true)
-      
-      // Load and display distance record marker AFTER map is loaded (with delay for coordinate system)
-      setTimeout(() => {
-        fetch(`${apiBase}/api/record`, { headers: { 'Authorization': authHeader } })
-          .then(res => res.json())
-          .then(data => {
-            if (data.ok && data.record && map.current) {
-              const record = data.record
-              const el = document.createElement('div')
-              el.className = 'record-marker'
-              el.innerHTML = `
-                <svg width="32" height="32" viewBox="0 0 32 32" style="filter: drop-shadow(0 0 8px #ffd700);">
-                  <circle cx="16" cy="16" r="14" fill="#ffd700" stroke="#ff9f1c" stroke-width="2"/>
-                  <text x="16" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#000">R</text>
-                </svg>
-              `
-              
-              new maplibregl.Marker({ element: el, anchor: 'center' })
-                .setLngLat([record.lon, record.lat])
-                .setPopup(new maplibregl.Popup({ offset: 15 }).setHTML(`
-                  <div style="font-family: 'Cascadia Code', monospace; padding: 10px; max-width: 280px; background: #1a1a1f; border: 2px solid #ffd700; border-radius: 4px;">
-                    <div style="font-weight: bold; color: #ffd700; font-size: 14px; margin-bottom: 6px; text-align: center;">
-                      🏆 DISTANCE RECORD HOLDER
-                    </div>
-                    <div style="color: #fff; font-size: 16px; margin-bottom: 4px; text-align: center;">
-                      ${record.flight || record.hex}
-                    </div>
-                    <div style="color: #ff9f1c; font-size: 20px; font-weight: bold; text-align: center; margin: 8px 0;">
-                      ${record.distance_km.toFixed(2)} km
-                    </div>
-                    <div style="border-top: 1px solid #444; padding-top: 8px; margin-top: 8px; font-size: 11px; color: #888;">
-                      <div>Altitude: ${record.altitude ? record.altitude.toLocaleString() + ' ft' : 'N/A'}</div>
-                      <div>Speed: ${record.gs ? record.gs + ' kt' : 'N/A'}</div>
-                      <div>Heading: ${record.track ? Math.round(record.track) + '°' : 'N/A'}</div>
-                      <div style="margin-top: 6px; color: #666;">
-                        Recorded: ${new Date(record.timestamp * 1000).toLocaleString('sv-SE')}
-                      </div>
-                    </div>
-                  </div>
-                `))
-                .addTo(map.current)
-              
-              // Force map to recalculate marker position
-              map.current.triggerRepaint()
-              
-              console.log(`[MAP] Record marker added: ${record.flight || record.hex} at ${record.distance_km.toFixed(2)}km`)
-            }
-          })
-          .catch(err => console.log('[MAP] No record yet or error loading:', err))
-      }, 500)
     })
 
     // Click on map to close popup and clear track
@@ -264,6 +254,58 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
       map.current = null
     }
   }, [center, clearSessionTrack])
+
+  // Update record marker - works exactly like aircraft markers
+  useEffect(() => {
+    if (!map.current || !isLoaded || !record) return
+
+    // Remove existing record marker
+    if (recordMarker.current) {
+      recordMarker.current.remove()
+      recordMarker.current = null
+    }
+
+    // Create new record marker (same pattern as aircraft markers)
+    const el = createRecordMarkerElement()
+    
+    const popupContent = `
+      <div style="font-family: 'Cascadia Code', monospace; padding: 10px; max-width: 280px; background: #1a1a1f; border: 2px solid #ffd700; border-radius: 4px;">
+        <div style="font-weight: bold; color: #ffd700; font-size: 14px; margin-bottom: 6px; text-align: center;">
+          🏆 DISTANCE RECORD HOLDER
+        </div>
+        <div style="color: #fff; font-size: 16px; margin-bottom: 4px; text-align: center;">
+          ${record.flight || record.hex}
+        </div>
+        <div style="color: #ff9f1c; font-size: 20px; font-weight: bold; text-align: center; margin: 8px 0;">
+          ${record.distance_km.toFixed(2)} km
+        </div>
+        <div style="border-top: 1px solid #444; padding-top: 8px; margin-top: 8px; font-size: 11px; color: #888;">
+          <div>Altitude: ${record.altitude ? record.altitude.toLocaleString() + ' ft' : 'N/A'}</div>
+          <div>Speed: ${record.gs ? record.gs + ' kt' : 'N/A'}</div>
+          <div>Heading: ${record.track ? Math.round(record.track) + '°' : 'N/A'}</div>
+          <div style="margin-top: 6px; color: #666;">
+            Recorded: ${new Date(record.timestamp * 1000).toLocaleString('sv-SE')}
+          </div>
+        </div>
+      </div>
+    `
+
+    const popup = new maplibregl.Popup({ 
+      closeButton: false,
+      closeOnClick: false,
+      offset: 15
+    }).setHTML(popupContent)
+
+    recordMarker.current = new maplibregl.Marker({ 
+      element: el,
+      anchor: 'center'
+    })
+      .setLngLat([record.lon, record.lat])
+      .setPopup(popup)
+      .addTo(map.current)
+
+    console.log(`[MAP] Record marker added: ${record.flight || record.hex} at ${record.distance_km.toFixed(2)}km`)
+  }, [record, isLoaded])
 
   // Update aircraft markers - preserve popup state
   useEffect(() => {

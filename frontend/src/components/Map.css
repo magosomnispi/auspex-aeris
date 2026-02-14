@@ -22,22 +22,19 @@
   filter: drop-shadow(0 0 8px currentColor) !important;
 }
 
-/* Record marker - maplibre requires absolute positioning */
+/* Record marker */
 .record-marker {
   cursor: pointer;
-  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  animation: record-pulse 2s ease-in-out infinite;
 }
 
 .record-marker svg {
   width: 32px;
   height: 32px;
-  display: block;
+  filter: drop-shadow(0 0 8px #ffd700);
+  animation: record-pulse 2s ease-in-out infinite;
 }
 
 @keyframes record-pulse {
