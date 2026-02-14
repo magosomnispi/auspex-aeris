@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import circle from '@turf/circle'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -61,8 +61,37 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
   const map = useRef<maplibregl.Map | null>(null)
   const aircraftMarkers = useRef<globalThis.Map<string, maplibregl.Marker>>(new globalThis.Map())
   const activePopupAircraft = useRef<string | null>(null)
+  const selectedTrackHex = useRef<string | null>(null)
   const encounterLine = useRef<maplibregl.GeoJSONSource | null>(null)
+  const sessionTrackLine = useRef<maplibregl.GeoJSONSource | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
+
+  // Fetch and display session track for an aircraft
+  const loadSessionTrack = useCallback((hex: string) => {
+    if (!map.current || !sessionTrackLine.current) return
+    
+    selectedTrackHex.current = hex
+    
+    fetch(`${apiBase}/api/session-tracks/${hex}/geojson`, {
+      headers: { 'Authorization': authHeader }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.features?.length > 0) {
+          sessionTrackLine.current?.setData({
+            type: 'FeatureCollection',
+            features: data.features
+          })
+        }
+      })
+      .catch(err => console.error('Failed to load session track:', err))
+  }, [apiBase, authHeader])
+
+  // Clear session track display
+  const clearSessionTrack = useCallback(() => {
+    selectedTrackHex.current = null
+    sessionTrackLine.current?.setData({ type: 'FeatureCollection', features: [] })
+  }, [])
 
   // Initialize map
   useEffect(() => {
@@ -129,7 +158,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         }
       })
 
-      // Add encounter track source
+      // Add encounter track source (for saved encounters - in zone)
       map.current.addSource('encounter-track', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -141,21 +170,42 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         source: 'encounter-track',
         paint: {
           'line-color': '#00d4ff',
-          'line-width': 3,
-          'line-opacity': 0.8
+          'line-width': 4,
+          'line-opacity': 0.9,
+          'line-dasharray': [1, 0]
         }
       })
 
+      // Add session track source (for all aircraft - ephemeral)
+      map.current.addSource('session-track', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      })
+
+      map.current.addLayer({
+        id: 'session-track-line',
+        type: 'line',
+        source: 'session-track',
+        paint: {
+          'line-color': '#ff9f1c',
+          'line-width': 2,
+          'line-opacity': 0.6,
+          'line-dasharray': [4, 4]
+        }
+      }, 'track-line') // Place below encounter track
+
       encounterLine.current = map.current.getSource('encounter-track') as maplibregl.GeoJSONSource
+      sessionTrackLine.current = map.current.getSource('session-track') as maplibregl.GeoJSONSource
       setIsLoaded(true)
     })
 
-    // Click on map to close popup
+    // Click on map to close popup and clear track
     map.current.on('click', (e) => {
       // If clicked on map (not on marker), clear active popup tracking
       const features = map.current?.queryRenderedFeatures(e.point)
       if (!features || features.length === 0) {
         activePopupAircraft.current = null
+        clearSessionTrack()
       }
     })
 
@@ -163,7 +213,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
       map.current?.remove()
       map.current = null
     }
-  }, [center])
+  }, [center, clearSessionTrack])
 
   // Update aircraft markers - preserve popup state
   useEffect(() => {
@@ -193,13 +243,18 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         ? `${ac.altitude.toLocaleString()} ft (${altMeters?.toLocaleString()} m)` 
         : 'N/A'
 
+      const trackType = isInZone ? 'PERSISTENT (In Zone)' : 'SESSION (Ephemeral)'
+
       const popupContent = `
-        <div style="font-family: 'Cascadia Code', monospace; padding: 8px;">
+        <div style="font-family: 'Cascadia Code', monospace; padding: 8px; max-width: 280px;">
           <div style="font-weight: bold; color: ${color}; font-size: 14px; margin-bottom: 4px;">
             ✈ ${ac.flight || 'UNKNOWN'}
           </div>
           <div style="color: #888; font-size: 11px; margin-bottom: 6px;">
             HEX: ${ac.hex}
+          </div>
+          <div style="font-size: 10px; color: ${isInZone ? '#ff4444' : '#ff9f1c'}; margin-bottom: 8px; border: 1px solid ${isInZone ? '#ff4444' : '#ff9f1c'}; padding: 2px 6px; border-radius: 3px; display: inline-block;">
+            ${trackType}
           </div>
           <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px;">
             <span style="color: #666;">Altitude:</span>
@@ -211,6 +266,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
             <span style="color: #666;">Distance:</span>
             <span style="color: ${color};">${ac.distance_km.toFixed(1)} km ${isInZone ? '⚠ IN ZONE' : ''}</span>
           </div>
+          ${!isInZone ? '<div style="margin-top: 8px; font-size: 10px; color: #666; font-style: italic;">Click to view session trail</div>' : ''}
         </div>
       `
 
@@ -253,9 +309,11 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
           .setPopup(popup)
           .addTo(map.current)
 
-        // Track popup state
+        // Track popup state and load session track on click
         el.addEventListener('click', () => {
           activePopupAircraft.current = ac.hex
+          // Always load session track when clicking an aircraft
+          loadSessionTrack(ac.hex)
         })
 
         existingMarkers.set(ac.hex, marker)
@@ -263,15 +321,18 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         // Restore popup if this aircraft should have it open
         if (activePopupAircraft.current === ac.hex) {
           marker.togglePopup()
+          loadSessionTrack(ac.hex)
         }
       }
     })
-  }, [aircraft, isLoaded])
+  }, [aircraft, isLoaded, loadSessionTrack])
 
-  // Update encounter track
+  // Update encounter track (for selected encounter from sidebar)
   useEffect(() => {
-    if (!encounterLine.current || !selectedEncounter) {
-      encounterLine.current?.setData({ type: 'FeatureCollection', features: [] })
+    if (!encounterLine.current) return
+    
+    if (!selectedEncounter) {
+      encounterLine.current.setData({ type: 'FeatureCollection', features: [] })
       return
     }
 

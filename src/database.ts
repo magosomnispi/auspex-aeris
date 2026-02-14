@@ -1,4 +1,4 @@
-import { Encounter, Trackpoint, EncounterSummary, LiveAircraft } from './types.js';
+import { Encounter, Trackpoint, EncounterSummary, LiveAircraft, SessionTrack } from './types.js';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 
@@ -18,6 +18,11 @@ let encounters: Encounter[] = [];
 let trackpoints: Trackpoint[] = [];
 let nextEncounterId = 1;
 let nextTrackpointId = 1;
+
+// Session-only ephemeral tracking (not persisted)
+const sessionTracks = new Map<string, SessionTrack>();
+const MAX_SESSION_POINTS = 500; // Max points per aircraft in session
+const MAX_SESSION_AGE = 3600; // Remove aircraft not seen for 1 hour
 
 // Load from disk if exists
 function loadData(): void {
@@ -61,6 +66,26 @@ export function initSchema(): void {
   
   // Auto-save every 30 seconds
   setInterval(saveData, 30000);
+  
+  // Cleanup old session tracks every 5 minutes
+  setInterval(cleanupSessionTracks, 300000);
+}
+
+// Cleanup old session tracks
+function cleanupSessionTracks(): void {
+  const now = Date.now() / 1000;
+  let count = 0;
+  
+  for (const [hex, track] of sessionTracks.entries()) {
+    if (now - track.lastUpdate > MAX_SESSION_AGE) {
+      sessionTracks.delete(hex);
+      count++;
+    }
+  }
+  
+  if (count > 0) {
+    console.log(`[SESSION] Cleaned up ${count} stale aircraft tracks`);
+  }
 }
 
 // Haversine distance calculation (km)
@@ -79,6 +104,58 @@ const CENTER_LAT = 59.257888;
 const CENTER_LON = 18.198243;
 
 export class DatabaseManager {
+  // Track all aircraft in session (ephemeral)
+  trackAircraft(aircraft: { hex: string; flight?: string; lat?: number; lon?: number; 
+                            altitude?: number; alt_baro?: number; gs?: number; track?: number }): void {
+    if (!aircraft.lat || !aircraft.lon) return;
+    
+    const now = Date.now() / 1000;
+    const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
+    
+    let track = sessionTracks.get(aircraft.hex);
+    
+    if (!track) {
+      track = {
+        hex: aircraft.hex,
+        flight: aircraft.flight?.trim() || null,
+        points: [],
+        firstSeen: now,
+        lastUpdate: now
+      };
+      sessionTracks.set(aircraft.hex, track);
+    }
+    
+    // Add point every 2 seconds max
+    const lastPoint = track.points[track.points.length - 1];
+    if (!lastPoint || (now - lastPoint.ts) >= 2.0) {
+      track.points.push({
+        ts: now,
+        lat: aircraft.lat,
+        lon: aircraft.lon,
+        alt,
+        gs: aircraft.gs ?? null,
+        track: aircraft.track ?? null
+      });
+      track.lastUpdate = now;
+      track.flight = aircraft.flight?.trim() || track.flight;
+      
+      // Limit points to prevent memory bloat
+      if (track.points.length > MAX_SESSION_POINTS) {
+        track.points.shift();
+      }
+    }
+  }
+  
+  // Get session track for an aircraft
+  getSessionTrack(hex: string): SessionTrack | null {
+    return sessionTracks.get(hex) || null;
+  }
+  
+  // Get all session tracks (for display)
+  getAllSessionTracks(): SessionTrack[] {
+    return Array.from(sessionTracks.values());
+  }
+
   // Check if aircraft is within range and manage encounters
   processAircraft(aircraft: { hex: string; flight?: string; lat?: number; lon?: number; 
                                altitude?: number; alt_baro?: number; gs?: number; track?: number; seen?: number }): void {
@@ -88,11 +165,14 @@ export class DatabaseManager {
     const now = Date.now() / 1000;
     const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
     
+    // Track all aircraft in session
+    this.trackAircraft(aircraft);
+    
     // Find existing active encounter
     const existing = encounters.find(e => e.hex === aircraft.hex && e.is_active === 1);
     
     if (distance <= 10.0) {
-      // Inside zone
+      // Inside zone - save to persistent storage
       if (existing) {
         // Update existing encounter
         existing.end_ts = now;
@@ -213,6 +293,41 @@ export class DatabaseManager {
     
     return { encounter, trackpoints: pts };
   }
+  
+  // Get session track as GeoJSON for any aircraft
+  getSessionTrackGeoJson(hex: string): { feature: Record<string, unknown>; properties: { point_count: number; is_encounter: boolean } } | null {
+    const track = sessionTracks.get(hex);
+    if (!track || track.points.length === 0) return null;
+    
+    const coords = track.points.map(p => [p.lon, p.lat, p.alt]);
+    
+    // Check if this aircraft has a saved encounter
+    const hasEncounter = encounters.some(e => e.hex === hex);
+    
+    const feature = {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: coords
+      },
+      properties: {
+        hex: track.hex,
+        flight: track.flight,
+        start_ts: track.firstSeen,
+        end_ts: track.lastUpdate,
+        is_session_track: true,
+        has_persistent_encounter: hasEncounter
+      }
+    };
+    
+    return { 
+      feature, 
+      properties: { 
+        point_count: track.points.length,
+        is_encounter: hasEncounter
+      } 
+    };
+  }
 
   // Get encounter as GeoJSON
   getEncounterGeoJson(id: number): { feature: Record<string, unknown>; properties: { point_count: number } } | null {
@@ -234,7 +349,8 @@ export class DatabaseManager {
         end_ts: data.encounter.end_ts,
         min_alt: data.encounter.min_alt,
         max_alt: data.encounter.max_alt,
-        min_dist: data.encounter.min_dist
+        min_dist: data.encounter.min_dist,
+        is_session_track: false
       }
     };
     
@@ -243,7 +359,7 @@ export class DatabaseManager {
 
   // Get stats
   getStats(): { total_encounters: number; active_encounters: number; total_trackpoints: number;
-                today_encounters: number } {
+                today_encounters: number; session_aircraft: number } {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayTs = today.getTime() / 1000;
@@ -252,7 +368,8 @@ export class DatabaseManager {
       total_encounters: encounters.length,
       active_encounters: encounters.filter(e => e.is_active === 1).length,
       total_trackpoints: trackpoints.length,
-      today_encounters: encounters.filter(e => e.start_ts >= todayTs).length
+      today_encounters: encounters.filter(e => e.start_ts >= todayTs).length,
+      session_aircraft: sessionTracks.size
     };
   }
   

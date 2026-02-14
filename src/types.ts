@@ -83,6 +83,23 @@ export interface EncounterSummary {
   point_count: number;
 }
 
+export interface SessionTrackPoint {
+  ts: number;
+  lat: number;
+  lon: number;
+  alt: number | null;
+  gs: number | null;
+  track: number | null;
+}
+
+export interface SessionTrack {
+  hex: string;
+  flight: string | null;
+  points: SessionTrackPoint[];
+  firstSeen: number;
+  lastUpdate: number;
+}
+
 export interface GeoJsonFeature {
   type: "Feature";
   geometry: {

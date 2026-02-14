@@ -161,6 +161,82 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
+// Session tracks (ephemeral, not persisted)
+app.get('/api/session-tracks', (req, res) => {
+  try {
+    const tracks = db.getAllSessionTracks();
+    res.json({
+      ok: true,
+      count: tracks.length,
+      tracks: tracks.map(t => ({
+        hex: t.hex,
+        flight: t.flight,
+        firstSeen: t.firstSeen,
+        lastUpdate: t.lastUpdate,
+        pointCount: t.points.length
+      }))
+    });
+  } catch (error) {
+    console.error('[API] Error fetching session tracks:', error);
+    res.status(503).json({
+      ok: false,
+      error: 'Database error'
+    });
+  }
+});
+
+// Single aircraft session track
+app.get('/api/session-tracks/:hex', (req, res) => {
+  const hex = req.params.hex.toLowerCase();
+  
+  try {
+    const track = db.getSessionTrack(hex);
+    if (!track) {
+      return res.status(404).json({ ok: false, error: 'Aircraft not found in session' });
+    }
+    
+    res.json({
+      ok: true,
+      hex: track.hex,
+      flight: track.flight,
+      firstSeen: track.firstSeen,
+      lastUpdate: track.lastUpdate,
+      points: track.points
+    });
+  } catch (error) {
+    console.error('[API] Error fetching session track:', error);
+    res.status(503).json({
+      ok: false,
+      error: 'Database error'
+    });
+  }
+});
+
+// Session track as GeoJSON (for map display)
+app.get('/api/session-tracks/:hex/geojson', (req, res) => {
+  const hex = req.params.hex.toLowerCase();
+  
+  try {
+    const data = db.getSessionTrackGeoJson(hex);
+    if (!data) {
+      return res.status(404).json({ ok: false, error: 'Aircraft track not found or empty' });
+    }
+    
+    res.json({
+      ok: true,
+      type: 'FeatureCollection',
+      features: [data.feature],
+      properties: data.properties
+    });
+  } catch (error) {
+    console.error('[API] Error generating session track GeoJSON:', error);
+    res.status(503).json({
+      ok: false,
+      error: 'Database error'
+    });
+  }
+});
+
 // Root
 app.get('/', (req, res) => {
   res.json({
@@ -173,6 +249,9 @@ app.get('/', (req, res) => {
       '/api/encounters',
       '/api/encounters/:id',
       '/api/encounters/:id/geojson',
+      '/api/session-tracks',
+      '/api/session-tracks/:hex',
+      '/api/session-tracks/:hex/geojson',
       '/api/stats'
     ],
     center: { lat: 59.257888, lon: 18.198243 }

@@ -65,10 +65,8 @@ export class Poller {
             seen_seconds: ac.seen ?? 0
           });
           
-          // Process for encounter tracking (only within 10km to reduce noise)
-          if (distance <= 10.0) {
-            this.db.processAircraft(ac);
-          }
+          // Process for tracking (all aircraft get session tracks, only in-zone get persisted)
+          this.db.processAircraft(ac);
         }
       }
       
