@@ -25,7 +25,18 @@
 /* Record marker */
 .record-marker {
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   animation: record-pulse 2s ease-in-out infinite;
+}
+
+.record-marker svg {
+  width: 32px;
+  height: 32px;
+  display: block;
 }
 
 @keyframes record-pulse {
