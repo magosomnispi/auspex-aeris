@@ -220,7 +220,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         
         // Update the marker element with new icon
         const el = existingMarker.getElement()
-        el.innerHTML = createAircraftIcon(ac.track ?? 0, color, isInZone)
+        el.innerHTML = createAircraftIcon(ac.track || 0, color, isInZone)
         
         // Update popup content
         const popup = existingMarker.getPopup()
@@ -237,7 +237,7 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
         const el = document.createElement('div')
         el.className = 'aircraft-marker'
         el.style.cursor = 'pointer'
-        el.innerHTML = createAircraftIcon(ac.track ?? 0, color, isInZone)
+        el.innerHTML = createAircraftIcon(ac.track || 0, color, isInZone)
 
         const popup = new maplibregl.Popup({ 
           closeButton: false,
