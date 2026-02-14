@@ -21,6 +21,9 @@ const sessionTracks = new Map();
 const MAX_SESSION_POINTS = 500; // Max points per aircraft in session
 const MAX_SESSION_AGE = 3600; // Remove aircraft not seen for 1 hour
 let farthestRecord = null;
+const recordCandidates = new Map();
+const MIN_POSITIONS_FOR_RECORD = 5; // Must track for at least 5 seconds/positions
+const CANDIDATE_MAX_AGE = 3600; // Clear candidates older than 1 hour
 // Load record from disk
 function loadRecord() {
     try {
@@ -93,6 +96,11 @@ export function initSchema() {
     setInterval(saveData, 30000);
     // Cleanup old session tracks every 5 minutes
     setInterval(cleanupSessionTracks, 300000);
+    // Cleanup old record candidates every 10 minutes
+    setInterval(() => {
+        const db = new DatabaseManager();
+        db.cleanupRecordCandidates();
+    }, 600000);
 }
 // Cleanup old session tracks
 function cleanupSessionTracks() {
@@ -157,31 +165,128 @@ export class DatabaseManager {
                 track.points.shift();
             }
         }
-        // Check for new distance record
+        // Check for new distance record (pass full telemetry)
         this.checkDistanceRecord(aircraft, distance_km);
     }
-    // Check and update distance record
+    // Check and update distance record with 5-position validation
     checkDistanceRecord(aircraft, distance_km) {
-        if (!farthestRecord || distance_km > farthestRecord.distance_km) {
-            const previousRecord = farthestRecord?.distance_km.toFixed(2) || 'none';
-            farthestRecord = {
+        const now = Date.now() / 1000;
+        const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
+        // Get or create candidate
+        let candidate = recordCandidates.get(aircraft.hex);
+        if (!candidate) {
+            candidate = {
                 hex: aircraft.hex,
                 flight: aircraft.flight?.trim() || null,
                 distance_km: distance_km,
-                lat: aircraft.lat,
-                lon: aircraft.lon,
-                altitude: aircraft.altitude ?? aircraft.alt_baro ?? null,
-                timestamp: Date.now() / 1000,
-                gs: aircraft.gs ?? null,
-                track: aircraft.track ?? null
+                positions: 1,
+                firstSeen: now,
+                lastSeen: now,
+                maxDistance: distance_km,
+                maxDistancePosition: { lat: aircraft.lat, lon: aircraft.lon, alt, ts: now },
+                lastTelemetry: {
+                    altitude: alt,
+                    gs: aircraft.gs ?? null,
+                    track: aircraft.track ?? null,
+                    baro_rate: aircraft.baro_rate ?? null,
+                    mach: aircraft.mach ?? null,
+                    tas: aircraft.tas ?? null,
+                    ias: aircraft.ias ?? null,
+                    nav_altitude_mcp: aircraft.nav_altitude_mcp ?? null,
+                    nav_qnh: aircraft.nav_qnh ?? null,
+                    nav_heading: aircraft.nav_heading ?? null,
+                    seen: aircraft.seen ?? null,
+                    rssi: aircraft.rssi ?? null,
+                    messages: aircraft.messages ?? null
+                }
+            };
+            recordCandidates.set(aircraft.hex, candidate);
+            return; // Too early to check record
+        }
+        // Update candidate
+        candidate.positions++;
+        candidate.lastSeen = now;
+        candidate.flight = aircraft.flight?.trim() || candidate.flight;
+        // Update telemetry with latest values
+        candidate.lastTelemetry = {
+            altitude: alt,
+            gs: aircraft.gs ?? candidate.lastTelemetry.gs,
+            track: aircraft.track ?? candidate.lastTelemetry.track,
+            baro_rate: aircraft.baro_rate ?? candidate.lastTelemetry.baro_rate,
+            mach: aircraft.mach ?? candidate.lastTelemetry.mach,
+            tas: aircraft.tas ?? candidate.lastTelemetry.tas,
+            ias: aircraft.ias ?? candidate.lastTelemetry.ias,
+            nav_altitude_mcp: aircraft.nav_altitude_mcp ?? candidate.lastTelemetry.nav_altitude_mcp,
+            nav_qnh: aircraft.nav_qnh ?? candidate.lastTelemetry.nav_qnh,
+            nav_heading: aircraft.nav_heading ?? candidate.lastTelemetry.nav_heading,
+            seen: aircraft.seen ?? candidate.lastTelemetry.seen,
+            rssi: aircraft.rssi ?? candidate.lastTelemetry.rssi,
+            messages: aircraft.messages ?? candidate.lastTelemetry.messages
+        };
+        // Track max distance and its position
+        if (distance_km > candidate.maxDistance) {
+            candidate.maxDistance = distance_km;
+            candidate.maxDistancePosition = { lat: aircraft.lat, lon: aircraft.lon, alt, ts: now };
+        }
+        // Only check for record after minimum positions tracked
+        if (candidate.positions < MIN_POSITIONS_FOR_RECORD) {
+            return;
+        }
+        // Check if this candidate beats the record
+        if (!farthestRecord || candidate.maxDistance > farthestRecord.distance_km) {
+            const previousRecord = farthestRecord?.distance_km.toFixed(2) || 'none';
+            const duration = now - candidate.firstSeen;
+            farthestRecord = {
+                hex: candidate.hex,
+                flight: candidate.flight,
+                distance_km: candidate.maxDistance,
+                lat: candidate.maxDistancePosition.lat,
+                lon: candidate.maxDistancePosition.lon,
+                altitude: candidate.maxDistancePosition.alt,
+                timestamp: candidate.maxDistancePosition.ts,
+                gs: candidate.lastTelemetry.gs,
+                track: candidate.lastTelemetry.track,
+                // Extended telemetry
+                baro_rate: candidate.lastTelemetry.baro_rate,
+                mach: candidate.lastTelemetry.mach,
+                tas: candidate.lastTelemetry.tas,
+                ias: candidate.lastTelemetry.ias,
+                nav_altitude_mcp: candidate.lastTelemetry.nav_altitude_mcp,
+                nav_qnh: candidate.lastTelemetry.nav_qnh,
+                nav_heading: candidate.lastTelemetry.nav_heading,
+                seen: candidate.lastTelemetry.seen,
+                rssi: candidate.lastTelemetry.rssi,
+                messages: candidate.lastTelemetry.messages,
+                // Tracking metadata
+                positions_tracked: candidate.positions,
+                tracking_duration_seconds: Math.round(duration),
+                first_seen: candidate.firstSeen,
+                set_at: now
             };
             saveRecord();
-            console.log(`[RECORD] New farthest aircraft! ${farthestRecord.flight || farthestRecord.hex} at ${distance_km.toFixed(2)}km (previous: ${previousRecord})`);
+            console.log(`[RECORD] 🏆 NEW RECORD! ${farthestRecord.flight || farthestRecord.hex} at ${candidate.maxDistance.toFixed(2)}km (tracked ${candidate.positions} positions over ${duration.toFixed(1)}s) - Previous: ${previousRecord}`);
+            // Clear this candidate as it's now the record
+            recordCandidates.delete(aircraft.hex);
         }
     }
     // Get the current distance record
     getDistanceRecord() {
         return farthestRecord;
+    }
+    // Cleanup old record candidates
+    cleanupRecordCandidates() {
+        const now = Date.now() / 1000;
+        let count = 0;
+        for (const [hex, candidate] of recordCandidates.entries()) {
+            if (now - candidate.lastSeen > CANDIDATE_MAX_AGE) {
+                recordCandidates.delete(hex);
+                count++;
+            }
+        }
+        if (count > 0) {
+            console.log(`[RECORD] Cleaned up ${count} stale record candidates`);
+        }
+        return count;
     }
     // Get session track for an aircraft
     getSessionTrack(hex) {
@@ -198,7 +303,7 @@ export class DatabaseManager {
         const distance = haversine(CENTER_LAT, CENTER_LON, aircraft.lat, aircraft.lon);
         const now = Date.now() / 1000;
         const alt = aircraft.altitude ?? aircraft.alt_baro ?? null;
-        // Track all aircraft in session (pass distance for record checking)
+        // Track all aircraft in session (pass full telemetry and distance for record checking)
         this.trackAircraft(aircraft, distance);
         // Find existing active encounter
         const existing = encounters.find(e => e.hex === aircraft.hex && e.is_active === 1);

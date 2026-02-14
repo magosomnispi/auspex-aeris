@@ -166,13 +166,13 @@ app.get('/api/record', (req, res) => {
   try {
     const record = db.getDistanceRecord();
     if (!record) {
-      return res.status(404).json({ 
-        ok: false, 
+      return res.status(404).json({
+        ok: false,
         error: 'No record yet - awaiting first contact',
-        message: 'Record will be set when an aircraft is tracked'
+        message: 'Record will be set when an aircraft is tracked for at least 5 seconds'
       });
     }
-    
+
     res.json({
       ok: true,
       record: {
@@ -185,10 +185,28 @@ app.get('/api/record', (req, res) => {
         timestamp: record.timestamp,
         gs: record.gs,
         track: record.track,
+        // Extended telemetry
+        baro_rate: record.baro_rate,
+        mach: record.mach,
+        tas: record.tas,
+        ias: record.ias,
+        nav_altitude_mcp: record.nav_altitude_mcp,
+        nav_qnh: record.nav_qnh,
+        nav_heading: record.nav_heading,
+        seen: record.seen,
+        rssi: record.rssi,
+        messages: record.messages,
+        // Tracking metadata
+        positions_tracked: record.positions_tracked,
+        tracking_duration_seconds: record.tracking_duration_seconds,
+        first_seen: record.first_seen,
+        set_at: record.set_at,
         formatted: {
           distance: `${record.distance_km.toFixed(2)} km`,
           position: `${record.lat.toFixed(6)}°N, ${record.lon.toFixed(6)}°E`,
-          time: new Date(record.timestamp * 1000).toISOString()
+          time: new Date(record.timestamp * 1000).toISOString(),
+          duration: `${record.tracking_duration_seconds}s`,
+          positions: record.positions_tracked
         }
       }
     });

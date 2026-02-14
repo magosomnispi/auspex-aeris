@@ -9,6 +9,20 @@ interface DistanceRecord {
     timestamp: number;
     gs: number | null;
     track: number | null;
+    baro_rate: number | null;
+    mach: number | null;
+    tas: number | null;
+    ias: number | null;
+    nav_altitude_mcp: number | null;
+    nav_qnh: number | null;
+    nav_heading: number | null;
+    seen: number | null;
+    rssi: number | null;
+    messages: number | null;
+    positions_tracked: number;
+    tracking_duration_seconds: number;
+    first_seen: number;
+    set_at: number;
 }
 export declare function initSchema(): void;
 export declare class DatabaseManager {
@@ -21,9 +35,20 @@ export declare class DatabaseManager {
         alt_baro?: number;
         gs?: number;
         track?: number;
+        baro_rate?: number;
+        mach?: number;
+        tas?: number;
+        ias?: number;
+        nav_altitude_mcp?: number;
+        nav_qnh?: number;
+        nav_heading?: number;
+        seen?: number;
+        rssi?: number;
+        messages?: number;
     }, distance_km: number): void;
     private checkDistanceRecord;
     getDistanceRecord(): DistanceRecord | null;
+    cleanupRecordCandidates(): number;
     getSessionTrack(hex: string): SessionTrack | null;
     getAllSessionTracks(): SessionTrack[];
     processAircraft(aircraft: {
@@ -36,6 +61,15 @@ export declare class DatabaseManager {
         gs?: number;
         track?: number;
         seen?: number;
+        baro_rate?: number;
+        mach?: number;
+        tas?: number;
+        ias?: number;
+        nav_altitude_mcp?: number;
+        nav_qnh?: number;
+        nav_heading?: number;
+        rssi?: number;
+        messages?: number;
     }): void;
     cleanupStaleEncounters(): number;
     getEncounters(limit?: number, offset?: number): EncounterSummary[];
