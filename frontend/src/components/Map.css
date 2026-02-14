@@ -22,9 +22,10 @@
   filter: drop-shadow(0 0 8px currentColor) !important;
 }
 
-/* Record marker */
+/* Record marker - maplibre requires absolute positioning */
 .record-marker {
   cursor: pointer;
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
