@@ -39,10 +39,28 @@ const MAP_STYLE = {
 
 const DETECTION_RADIUS_KM = 10
 
+// Create aircraft SVG icon with rotation
+function createAircraftIcon(track: number, color: string, isInZone: boolean): string {
+  const rotation = track || 0
+  return `
+    <svg width="24" height="24" viewBox="0 0 24 24" style="transform: rotate(${rotation}deg); filter: drop-shadow(0 0 4px ${color});">
+      <!-- Aircraft shape -->
+      <path 
+        d="M12 2 L14 8 L20 10 L20 12 L14 11 L13 18 L16 20 L16 21 L12 20 L8 21 L8 20 L11 18 L10 11 L4 12 L4 10 L10 8 Z" 
+        fill="${color}" 
+        stroke="#fff" 
+        stroke-width="1"
+      />
+      ${isInZone ? '<circle cx="12" cy="12" r="14" fill="none" stroke="#ff4444" stroke-width="2" stroke-dasharray="3,2" opacity="0.8"/>' : ''}
+    </svg>
+  `
+}
+
 export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
-  const aircraftMarkers = useRef<maplibregl.Marker[]>([])
+  const aircraftMarkers = useRef<Map<string, maplibregl.Marker>>(new Map())
+  const activePopupAircraft = useRef<string | null>(null)
   const encounterLine = useRef<maplibregl.GeoJSONSource | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
 
@@ -132,55 +150,121 @@ export function Map({ center, aircraft, selectedEncounter, apiBase, authHeader }
       setIsLoaded(true)
     })
 
+    // Click on map to close popup
+    map.current.on('click', (e) => {
+      // If clicked on map (not on marker), clear active popup tracking
+      const features = map.current?.queryRenderedFeatures(e.point)
+      if (!features || features.length === 0) {
+        activePopupAircraft.current = null
+      }
+    })
+
     return () => {
       map.current?.remove()
       map.current = null
     }
   }, [center])
 
-  // Update aircraft markers
+  // Update aircraft markers - preserve popup state
   useEffect(() => {
     if (!map.current || !isLoaded) return
 
-    // Clear existing markers
-    aircraftMarkers.current.forEach(marker => marker.remove())
-    aircraftMarkers.current = []
+    const currentHexes = new Set(aircraft.map(ac => ac.hex))
+    const existingMarkers = aircraftMarkers.current
 
-    // Add new markers
+    // Remove markers for aircraft that are no longer present
+    existingMarkers.forEach((marker, hex) => {
+      if (!currentHexes.has(hex)) {
+        marker.remove()
+        existingMarkers.delete(hex)
+      }
+    })
+
+    // Update or create markers
     aircraft.forEach(ac => {
       if (!map.current) return
 
       const isInZone = ac.distance_km <= DETECTION_RADIUS_KM
       const color = isInZone ? '#ff4444' : '#00d4ff'
-      const el = document.createElement('div')
-      el.className = 'aircraft-marker'
-      el.innerHTML = `<div style="
-        width: 12px;
-        height: 12px;
-        background: ${color};
-        border-radius: 50%;
-        border: 2px solid #fff;
-        box-shadow: 0 0 10px ${color};
-        ${isInZone ? 'animation: pulse 1s ease-in-out infinite;' : ''}
-      "></div>`
+      const existingMarker = existingMarkers.get(ac.hex)
 
       const altMeters = ac.altitude ? Math.round(ac.altitude * 0.3048) : null
       const altDisplay = ac.altitude 
         ? `${ac.altitude.toLocaleString()} ft (${altMeters?.toLocaleString()} m)` 
         : 'N/A'
 
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([ac.lon, ac.lat])
-        .setPopup(new maplibregl.Popup().setHTML(`
-          <b>${ac.flight || 'UNKNOWN'}</b><br>
-          Hex: ${ac.hex}<br>
-          Alt: ${altDisplay}<br>
-          Speed: ${ac.gs ? ac.gs + ' kt' : 'N/A'}<br>
-          Dist: ${ac.distance_km.toFixed(1)} km
-        `))
-        .addTo(map.current)
+      const popupContent = `
+        <div style="font-family: 'Cascadia Code', monospace; padding: 8px;">
+          <div style="font-weight: bold; color: ${color}; font-size: 14px; margin-bottom: 4px;">
+            ✈ ${ac.flight || 'UNKNOWN'}
+          </div>
+          <div style="color: #888; font-size: 11px; margin-bottom: 6px;">
+            HEX: ${ac.hex}
+          </div>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px;">
+            <span style="color: #666;">Altitude:</span>
+            <span style="color: #ccc;">${altDisplay}</span>
+            <span style="color: #666;">Speed:</span>
+            <span style="color: #ccc;">${ac.gs ? ac.gs + ' kt' : 'N/A'}</span>
+            <span style="color: #666;">Track:</span>
+            <span style="color: #ccc;">${ac.track ? Math.round(ac.track) + '°' : 'N/A'}</span>
+            <span style="color: #666;">Distance:</span>
+            <span style="color: ${color};">${ac.distance_km.toFixed(1)} km ${isInZone ? '⚠ IN ZONE' : ''}</span>
+          </div>
+        </div>
+      `
 
-      aircraftMarkers.current.push(marker)
+      if (existingMarker) {
+        // Update existing marker position and icon
+        existingMarker.setLngLat([ac.lon, ac.lat])
+        
+        // Update the marker element with new icon
+        const el = existingMarker.getElement()
+        el.innerHTML = createAircraftIcon(ac.track, color, isInZone)
+        
+        // Update popup content
+        const popup = existingMarker.getPopup()
+        if (popup) {
+          popup.setHTML(popupContent)
+        }
+
+        // Restore popup if this aircraft had it open
+        if (activePopupAircraft.current === ac.hex) {
+          existingMarker.togglePopup()
+        }
+      } else {
+        // Create new marker with aircraft icon
+        const el = document.createElement('div')
+        el.className = 'aircraft-marker'
+        el.style.cursor = 'pointer'
+        el.innerHTML = createAircraftIcon(ac.track, color, isInZone)
+
+        const popup = new maplibregl.Popup({ 
+          closeButton: false,
+          closeOnClick: false,
+          offset: 15
+        }).setHTML(popupContent)
+
+        const marker = new maplibregl.Marker({ 
+          element: el,
+          anchor: 'center'
+        })
+          .setLngLat([ac.lon, ac.lat])
+          .setPopup(popup)
+          .addTo(map.current)
+
+        // Track popup state
+        el.addEventListener('click', () => {
+          activePopupAircraft.current = ac.hex
+        })
+
+        existingMarkers.set(ac.hex, marker)
+
+        // Restore popup if this aircraft should have it open
+        if (activePopupAircraft.current === ac.hex) {
+          marker.togglePopup()
+        }
+      }
     })
   }, [aircraft, isLoaded])
 
